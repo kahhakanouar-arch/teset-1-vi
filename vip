@@ -8,7 +8,7 @@ local LocalPlayer = Players.LocalPlayer
 local activeESP = {}
 local espEnabled = true
 local currentKeybind = Enum.KeyCode.Y
-local updateInterval = 1.2  -- plus lent = beaucoup moins de lag
+local updateInterval = 1.2
 
 local function getToolTexture(tool)
     if not tool then return "rbxassetid://4483345998" end
@@ -83,32 +83,22 @@ local function createInventoryESP(player)
     local billboard = Instance.new("BillboardGui")
     billboard.Name = "InventoryESP"
     billboard.Parent = head
-    billboard.Size = UDim2.new(0, 140, 0, 100)  -- ultra petit
+    billboard.Size = UDim2.new(0, 140, 0, 100)
     billboard.StudsOffset = Vector3.new(0, 3.2, 0)
     billboard.AlwaysOnTop = true
     billboard.Enabled = espEnabled
-    billboard.MaxDistance = 650  -- réduit pour moins de calculs
+    billboard.MaxDistance = 650
     
     local bg = Instance.new("Frame", billboard)
     bg.Size = UDim2.new(1, 0, 1, 0)
     bg.BackgroundColor3 = Color3.fromRGB(10, 10, 20)
-    bg.BackgroundTransparency = 0.4  -- plus transparent = moins lourd
+    bg.BackgroundTransparency = 0.4
     bg.BorderSizePixel = 0
     Instance.new("UICorner", bg).CornerRadius = UDim.new(0, 6)
     
-    local titleLabel = Instance.new("TextLabel", bg)
-    titleLabel.Size = UDim2.new(1, -8, 0, 18)
-    titleLabel.Position = UDim2.new(0, 4, 0, 2)
-    titleLabel.BackgroundTransparency = 1
-    titleLabel.Font = Enum.Font.GothamBold
-    titleLabel.TextSize = 11
-    titleLabel.TextColor3 = Color3.fromRGB(220, 220, 255)
-    titleLabel.TextXAlignment = Enum.TextXAlignment.Center
-    titleLabel.Text = player.DisplayName
-    
     local scroll = Instance.new("ScrollingFrame", bg)
-    scroll.Size = UDim2.new(1, -8, 1, -24)
-    scroll.Position = UDim2.new(0, 4, 0, 22)
+    scroll.Size = UDim2.new(1, -8, 1, -8)
+    scroll.Position = UDim2.new(0, 4, 0, 4)
     scroll.BackgroundTransparency = 1
     scroll.ScrollBarThickness = 2
     scroll.ScrollBarImageColor3 = Color3.fromRGB(90, 90, 200)
@@ -210,13 +200,6 @@ local function createInventoryESP(player)
             return
         end
         
-        local lRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-        local pRoot = player.Character:FindFirstChild("HumanoidRootPart")
-        if lRoot and pRoot then
-            local dist = (lRoot.Position - pRoot.Position).Magnitude
-            titleLabel.Text = player.DisplayName .. " (" .. math.floor(dist / 3) .. "m)"
-        end
-        
         renderTools()
     end)
     
@@ -239,32 +222,31 @@ UserInputService.InputBegan:Connect(function(input, gpe)
     end
 end)
 
--- Initialisation
-for _, player in ipairs(Players:GetPlayers()) do
-    if player ~= LocalPlayer then
-        task.spawn(function()
-            if player.Character then
-                createInventoryESP(player)
-            end
-            player.CharacterAdded:Connect(function()
-                task.wait(0.8)  -- un peu plus lent au respawn pour éviter spam
-                createInventoryESP(player)
-            end)
+-- Initialisation + join + respawn
+local function setupPlayer(player)
+    if player == LocalPlayer then return end
+    
+    local function tryCreate()
+        if player.Character then
+            createInventoryESP(player)
+        end
+    end
+    
+    tryCreate()
+    
+    if player.CharacterAdded then
+        player.CharacterAdded:Connect(function()
+            task.wait(0.6)  -- petit délai pour éviter bug au spawn
+            tryCreate()
         end)
     end
 end
 
-Players.PlayerAdded:Connect(function(player)
-    if player == LocalPlayer then return end
-    task.spawn(function()
-        player.CharacterAdded:Connect(function()
-            task.wait(0.8)
-            if espEnabled then
-                createInventoryESP(player)
-            end
-        end)
-    end)
-end)
+for _, player in ipairs(Players:GetPlayers()) do
+    task.spawn(setupPlayer, player)
+end
+
+Players.PlayerAdded:Connect(setupPlayer)
 
 Players.PlayerRemoving:Connect(function(player)
     if activeESP[player.Name] then
@@ -278,4 +260,4 @@ Players.PlayerRemoving:Connect(function(player)
     end
 end)
 
-print("ESP Inventory ULTRA PETIT & ANTI-LAG activé ! Touche Y pour toggle.")
+print("ESP outils PETIT + ANTI-LAG + AUTO sur join/reset (sans nom ni distance) - Y pour toggle")
