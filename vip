@@ -8,7 +8,7 @@ local LocalPlayer = Players.LocalPlayer
 local activeESP = {}
 local espEnabled = true
 local currentKeybind = Enum.KeyCode.Y
-local updateInterval = 0.5  -- Un peu plus lent pour moins de lag
+local updateInterval = 0.5
 
 local function getToolTexture(tool)
     if not tool then return "rbxassetid://4483345998" end
@@ -84,7 +84,7 @@ local function createInventoryESP(player)
     local billboard = Instance.new("BillboardGui")
     billboard.Name = "InventoryESP"
     billboard.Parent = head
-    billboard.Size = UDim2.new(0, 200, 0, 160)  -- PETIT GUI ! 😎
+    billboard.Size = UDim2.new(0, 200, 0, 160)
     billboard.StudsOffset = Vector3.new(0, 3.5, 0)
     billboard.AlwaysOnTop = true
     billboard.Enabled = espEnabled
@@ -225,7 +225,6 @@ local function createInventoryESP(player)
             return
         end
         
-        -- Update distance
         local lRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
         local pRoot = player.Character:FindFirstChild("HumanoidRootPart")
         if lRoot and pRoot then
@@ -249,7 +248,6 @@ local function toggleAllESP()
     end
 end
 
--- Keybind toggle (Y)
 UserInputService.InputBegan:Connect(function(input, gpe)
     if gpe then return end
     if input.KeyCode == currentKeybind then
@@ -257,7 +255,6 @@ UserInputService.InputBegan:Connect(function(input, gpe)
     end
 end)
 
--- Init existing players
 for _, player in ipairs(Players:GetPlayers()) do
     if player ~= LocalPlayer then
         spawn(function()
@@ -272,7 +269,6 @@ for _, player in ipairs(Players:GetPlayers()) do
     end
 end
 
--- New players
 Players.PlayerAdded:Connect(function(player)
     if player == LocalPlayer then return end
     player.CharacterAdded:Connect(function()
@@ -283,7 +279,6 @@ Players.PlayerAdded:Connect(function(player)
     end)
 end)
 
--- Cleanup
 Players.PlayerRemoving:Connect(function(player)
     if activeESP[player.Name] then
         activeESP[player.Name].connection:Disconnect()
