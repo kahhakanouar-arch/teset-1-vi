@@ -1,290 +1,193 @@
 local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local StarterPack = game:GetService("StarterPack")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
 local LocalPlayer = Players.LocalPlayer
 local activeESP = {}
 local espEnabled = true
-local currentKeybind = Enum.KeyCode.Y
-local updateInterval = 0.5
+local keybind = Enum.KeyCode.Y
+local updateRate = 0.4  -- Pas trop rapide
 
-local function getToolTexture(tool)
-    if not tool then return "rbxassetid://4483345998" end
-    if typeof(tool.TextureId) == "string" and tool.TextureId ~= "" then return tool.TextureId end
-    if tool:GetAttribute("ImageId") then return tool:GetAttribute("ImageId") end
-    local handle = tool:FindFirstChild("Handle")
-    if handle then
-        if handle:IsA("MeshPart") and handle.TextureID ~= "" then return handle.TextureID end
-        for _, decal in ipairs(handle:GetChildren()) do
-            if decal:IsA("Decal") and decal.Texture ~= "" then return decal.Texture end
+local function getEquippedTool(player)
+    if not player.Character then return nil end
+    for _, child in ipairs(player.Character:GetChildren()) do
+        if child:IsA("Tool") then
+            return child
         end
     end
-    return "rbxassetid://4483345998"
+    return nil
 end
 
-local function getRarityColor(rarity)
-    local colors = {
-        Common = Color3.fromRGB(0, 255, 0),
-        Rare = Color3.fromRGB(0, 0, 255),
-        Epic = Color3.fromRGB(128, 0, 128),
-        Legendary = Color3.fromRGB(255, 215, 0),
-        Uncommon = Color3.fromRGB(128, 128, 128)
-    }
-    return colors[rarity] or Color3.fromRGB(128, 128, 128)
-end
-
-local function matchToolName(tool)
-    if not tool then return "Unknown", getToolTexture(nil) end
-    local handle = tool:FindFirstChild("Handle")
-    if not handle then return tool.Name, getToolTexture(tool) end
-    local names = {}
-    for _, child in ipairs(handle:GetChildren()) do names[child.Name] = true end
-    for _, source in ipairs({ReplicatedStorage:FindFirstChild("Items"), StarterPack}) do
-        if source then
-            for _, item in ipairs(source:GetDescendants()) do
-                if item:IsA("Tool") and item:FindFirstChild("Handle") then
-                    local matches = true
-                    for name in pairs(names) do
-                        if not item.Handle:FindFirstChild(name) then matches = false break end
-                    end
-                    if matches then return item.Name, getToolTexture(item) end
-                end
-            end
-        end
+local function getToolName(tool)
+    if not tool then return "None" end
+    -- On essaie de trouver un nom "propre" si possible
+    local display = tool.Name
+    if tool:FindFirstChild("DisplayName") then
+        display = tool.DisplayName.Value
+    elseif tool:GetAttribute("DisplayName") then
+        display = tool:GetAttribute("DisplayName")
     end
-    return tool.Name, getToolTexture(tool)
+    return display
 end
 
-local function getPlayerTools(player)
-    local tools = {}
-    if not player then return tools end
-    for _, container in ipairs({player.Backpack, player.Character}) do
-        if container then
-            for _, tool in ipairs(container:GetChildren()) do
-                if tool:IsA("Tool") then 
-                    table.insert(tools, tool)
-                end
-            end
-        end
-    end
-    return tools
-end
-
-local function createInventoryESP(player)
+local function createToolESP(player)
     if activeESP[player.Name] then return end
     
     local char = player.Character
-    if not char then return end
+    if not char or not char:FindFirstChild("Head") then return end
     
-    local head = char:FindFirstChild("Head")
-    if not head then return end
+    local head = char.Head
     
     local billboard = Instance.new("BillboardGui")
-    billboard.Name = "InventoryESP"
+    billboard.Name = "ToolESP"
     billboard.Parent = head
-    billboard.Size = UDim2.new(0, 200, 0, 160)
-    billboard.StudsOffset = Vector3.new(0, 3.5, 0)
+    billboard.Adornee = head
+    billboard.Size = UDim2.new(0, 180, 0, 90)  -- compact
+    billboard.StudsOffset = Vector3.new(0, 3.2, 0)
     billboard.AlwaysOnTop = true
+    billboard.LightInfluence = 0
     billboard.Enabled = espEnabled
     
-    local bg = Instance.new("Frame", billboard)
-    bg.Size = UDim2.new(1, 0, 1, 0)
-    bg.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
-    bg.BackgroundTransparency = 0.15
-    bg.BorderSizePixel = 0
-    local bgCorner = Instance.new("UICorner", bg)
-    bgCorner.CornerRadius = UDim.new(0, 10)
-    local bgStroke = Instance.new("UIStroke", bg)
-    bgStroke.Color = Color3.fromRGB(80, 60, 200)
-    bgStroke.Thickness = 1.5
-    bgStroke.Transparency = 0.2
+    local frame = Instance.new("Frame", billboard)
+    frame.Size = UDim2.new(1, 0, 1, 0)
+    frame.BackgroundColor3 = Color3.fromRGB(10, 10, 20)
+    frame.BackgroundTransparency = 0.45
+    frame.BorderSizePixel = 0
+    Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 6)
     
-    local titleLabel = Instance.new("TextLabel", bg)
-    titleLabel.Size = UDim2.new(1, -16, 0, 24)
-    titleLabel.Position = UDim2.new(0, 8, 0, 3)
-    titleLabel.BackgroundTransparency = 1
-    titleLabel.Font = Enum.Font.GothamBold
-    titleLabel.TextSize = 12
-    titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    titleLabel.TextXAlignment = Enum.TextXAlignment.Center
-    titleLabel.TextYAlignment = Enum.TextYAlignment.Center
-    titleLabel.Text = player.DisplayName
+    local stroke = Instance.new("UIStroke", frame)
+    stroke.Color = Color3.fromRGB(90, 70, 220)
+    stroke.Thickness = 1.2
+    stroke.Transparency = 0.3
     
-    local scroll = Instance.new("ScrollingFrame", bg)
-    scroll.Name = "ToolScroll"
-    scroll.Size = UDim2.new(1, -16, 1, -32)
-    scroll.Position = UDim2.new(0, 8, 0, 30)
-    scroll.BackgroundTransparency = 1
-    scroll.ScrollBarThickness = 2
-    scroll.ScrollBarImageColor3 = Color3.fromRGB(100, 80, 200)
-    scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-    scroll.ScrollBarImageTransparency = 0.5
+    local title = Instance.new("TextLabel", frame)
+    title.Size = UDim2.new(1, -10, 0, 18)
+    title.Position = UDim2.new(0, 5, 0, 4)
+    title.BackgroundTransparency = 1
+    title.Font = Enum.Font.GothamBold
+    title.TextSize = 13
+    title.TextColor3 = Color3.fromRGB(220, 220, 255)
+    title.TextXAlignment = Enum.TextXAlignment.Left
+    title.Text = player.DisplayName
     
-    local layout = Instance.new("UIListLayout", scroll)
-    layout.SortOrder = Enum.SortOrder.LayoutOrder
-    layout.Padding = UDim.new(0, 4)
+    local toolsText = Instance.new("TextLabel", frame)
+    toolsText.Name = "ToolsLabel"
+    toolsText.Size = UDim2.new(1, -10, 1, -26)
+    toolsText.Position = UDim2.new(0, 5, 0, 24)
+    toolsText.BackgroundTransparency = 1
+    toolsText.Font = Enum.Font.Gotham
+    toolsText.TextSize = 11
+    toolsText.TextColor3 = Color3.fromRGB(180, 180, 220)
+    toolsText.TextXAlignment = Enum.TextXAlignment.Left
+    toolsText.TextYAlignment = Enum.TextYAlignment.Top
+    toolsText.TextWrapped = true
+    toolsText.Text = "Loading..."
     
     local lastUpdate = 0
     
-    local function renderTools()
+    local function updateDisplay()
         local now = tick()
-        if now - lastUpdate < updateInterval then return end
+        if now - lastUpdate < updateRate then return end
         lastUpdate = now
         
-        for _, child in ipairs(scroll:GetChildren()) do
-            if child ~= layout then child:Destroy() end
+        local equipped = getEquippedTool(player)
+        local tools = {}
+        
+        if equipped then
+            table.insert(tools, "EQP: " .. getToolName(equipped))
         end
         
-        local tools = getPlayerTools(player)
-        local lchar = player.Character
-        if #tools == 0 then
-            local noTools = Instance.new("TextLabel", scroll)
-            noTools.Size = UDim2.new(1, 0, 0, 30)
-            noTools.BackgroundTransparency = 1
-            noTools.Font = Enum.Font.Gotham
-            noTools.TextSize = 11
-            noTools.TextColor3 = Color3.fromRGB(180, 180, 180)
-            noTools.Text = "No tools"
-            noTools.TextXAlignment = Enum.TextXAlignment.Center
-            noTools.TextYAlignment = Enum.TextYAlignment.Center
-            return
-        end
-        
-        for i, tool in ipairs(tools) do
-            local toolName, toolImage = matchToolName(tool)
-            local toolFrame = Instance.new("Frame", scroll)
-            toolFrame.Size = UDim2.new(1, 0, 0, 36)
-            toolFrame.BackgroundColor3 = Color3.fromRGB(30, 25, 45)
-            toolFrame.BorderSizePixel = 0
-            local tfCorner = Instance.new("UICorner", toolFrame)
-            tfCorner.CornerRadius = UDim.new(0, 6)
-            
-            local icon = Instance.new("ImageLabel", toolFrame)
-            icon.Size = UDim2.new(0, 28, 0, 28)
-            icon.Position = UDim2.new(0, 4, 0.5, -14)
-            icon.BackgroundTransparency = 1
-            icon.Image = toolImage
-            icon.ImageColor3 = Color3.fromRGB(210, 210, 255)
-            local iconCorner = Instance.new("UICorner", icon)
-            iconCorner.CornerRadius = UDim.new(0, 5)
-            
-            local nameLabel = Instance.new("TextLabel", toolFrame)
-            nameLabel.Size = UDim2.new(1, -50, 0.7, 0)
-            nameLabel.Position = UDim2.new(0, 38, 0, 2)
-            nameLabel.BackgroundTransparency = 1
-            nameLabel.Font = Enum.Font.GothamBold
-            nameLabel.TextSize = 10
-            nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-            nameLabel.TextXAlignment = Enum.TextXAlignment.Left
-            nameLabel.TextYAlignment = Enum.TextYAlignment.Top
-            nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
-            nameLabel.Text = toolName
-            
-            local rarity = tool:GetAttribute("RarityName") or "Common"
-            local rarityLabel = Instance.new("TextLabel", toolFrame)
-            rarityLabel.Size = UDim2.new(0, 40, 0, 12)
-            rarityLabel.Position = UDim2.new(1, -44, 0.5, -6)
-            rarityLabel.BackgroundColor3 = Color3.fromRGB(45, 45, 65)
-            rarityLabel.Font = Enum.Font.GothamBold
-            rarityLabel.TextSize = 7
-            rarityLabel.TextColor3 = getRarityColor(rarity)
-            rarityLabel.Text = rarity:sub(1,3):upper()
-            rarityLabel.TextXAlignment = Enum.TextXAlignment.Center
-            local rCorner = Instance.new("UICorner", rarityLabel)
-            rCorner.CornerRadius = UDim.new(0, 3)
-            
-            if lchar and tool.Parent == lchar then
-                local equippedLabel = Instance.new("TextLabel", toolFrame)
-                equippedLabel.Size = UDim2.new(0, 40, 0, 12)
-                equippedLabel.Position = UDim2.new(1, -44, 0.5, 2)
-                equippedLabel.BackgroundColor3 = Color3.fromRGB(50, 140, 70)
-                equippedLabel.Font = Enum.Font.GothamBold
-                equippedLabel.TextSize = 7
-                equippedLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-                equippedLabel.Text = "EQP"
-                equippedLabel.TextXAlignment = Enum.TextXAlignment.Center
-                local eCorner = Instance.new("UICorner", equippedLabel)
-                eCorner.CornerRadius = UDim.new(0, 3)
+        if player.Backpack then
+            for _, tool in ipairs(player.Backpack:GetChildren()) do
+                if tool:IsA("Tool") then
+                    table.insert(tools, getToolName(tool))
+                end
             end
+        end
+        
+        local text = ""
+        if #tools == 0 then
+            text = "No tools"
+        else
+            text = table.concat(tools, "\n")
+        end
+        
+        toolsText.Text = text
+        
+        -- Distance
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        local lhrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if hrp and lhrp then
+            local dist = (hrp.Position - lhrp.Position).Magnitude
+            title.Text = player.DisplayName .. "   [" .. math.floor(dist) .. " studs]"
+        else
+            title.Text = player.DisplayName
         end
     end
     
-    renderTools()
+    updateDisplay()
     
-    local heartbeatConn
-    heartbeatConn = RunService.Heartbeat:Connect(function()
+    local conn
+    conn = RunService.Heartbeat:Connect(function()
         if not player.Parent or not player.Character or not player.Character.Parent then
-            heartbeatConn:Disconnect()
+            conn:Disconnect()
             if activeESP[player.Name] then
                 activeESP[player.Name].billboard:Destroy()
                 activeESP[player.Name] = nil
             end
             return
         end
-        
-        local lRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-        local pRoot = player.Character:FindFirstChild("HumanoidRootPart")
-        if lRoot and pRoot then
-            local dist = (lRoot.Position - pRoot.Position).Magnitude
-            titleLabel.Text = player.DisplayName .. "\n(" .. math.floor(dist / 3) .. "m)"
-        end
-        
-        renderTools()
+        updateDisplay()
     end)
     
-    activeESP[player.Name] = {
-        billboard = billboard,
-        connection = heartbeatConn
-    }
+    activeESP[player.Name] = {billboard = billboard, connection = conn}
 end
 
-local function toggleAllESP()
+local function toggleESP()
     espEnabled = not espEnabled
     for _, data in pairs(activeESP) do
         data.billboard.Enabled = espEnabled
     end
 end
 
-UserInputService.InputBegan:Connect(function(input, gpe)
-    if gpe then return end
-    if input.KeyCode == currentKeybind then
-        toggleAllESP()
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == keybind then
+        toggleESP()
     end
 end)
 
-for _, player in ipairs(Players:GetPlayers()) do
-    if player ~= LocalPlayer then
-        spawn(function()
-            if player.Character then
-                createInventoryESP(player)
+-- Initialisation
+for _, plr in ipairs(Players:GetPlayers()) do
+    if plr ~= LocalPlayer then
+        task.spawn(function()
+            if plr.Character then
+                createToolESP(plr)
             end
-            player.CharacterAdded:Connect(function()
-                wait(0.5)
-                createInventoryESP(player)
+            plr.CharacterAdded:Connect(function()
+                task.wait(0.6)
+                createToolESP(plr)
             end)
         end)
     end
 end
 
-Players.PlayerAdded:Connect(function(player)
-    if player == LocalPlayer then return end
-    player.CharacterAdded:Connect(function()
-        wait(0.5)
+Players.PlayerAdded:Connect(function(plr)
+    if plr == LocalPlayer then return end
+    plr.CharacterAdded:Connect(function()
+        task.wait(0.6)
         if espEnabled then
-            createInventoryESP(player)
+            createToolESP(plr)
         end
     end)
 end)
 
-Players.PlayerRemoving:Connect(function(player)
-    if activeESP[player.Name] then
-        activeESP[player.Name].connection:Disconnect()
-        activeESP[player.Name].billboard:Destroy()
-        activeESP[player.Name] = nil
+Players.PlayerRemoving:Connect(function(plr)
+    if activeESP[plr.Name] then
+        activeESP[plr.Name].connection:Disconnect()
+        activeESP[plr.Name].billboard:Destroy()
+        activeESP[plr.Name] = nil
     end
 end)
 
-print("ESP Inventory PETIT activé ! Appuie sur Y pour toggle. 🎉")
+print("Hermanos-style Tool ESP activé ! Touche Y pour toggle.")
